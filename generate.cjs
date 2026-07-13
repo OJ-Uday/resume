@@ -104,7 +104,7 @@ const doc = new Document({
         spacing: { after: 20 },
         children: [new TextRun({
           font: FONT, size: BODY,
-          text: "Software engineer (B.Tech CS ’26). At Eli Lilly, designed and shipped a production telemetry platform end-to-end — TypeScript browser SDK, Go + ClickHouse analytics backend, React dashboard, zero-touch Kubernetes/GitOps delivery. Independently authored vetlock, an open-source npm supply-chain scanner (17 detectors, 375 tests, 12/13 historical attacks caught, 31 red-team exploits closed) with a live browser demo on Cloudflare Workers + GitHub Actions. CTF reverse-engineering lead; two prior cybersecurity internships.",
+          text: "Software engineer (B.Tech CS ’26). At Eli Lilly, designed and shipped a production telemetry platform end-to-end — TypeScript browser SDK, Go + ClickHouse analytics backend, React dashboard, zero-touch Kubernetes/GitOps delivery. Independently authored vetlock, an open-source npm supply-chain scanner (17 detectors, 375 tests, 12/13 historical attacks caught) with a live browser demo on Cloudflare Workers + GitHub Actions. CTF reverse-engineering lead; two prior cybersecurity internships.",
         })],
       }),
 
@@ -123,7 +123,6 @@ const doc = new Document({
       bullet([{ text: "Invented a two-tier UI element-identity scheme and capture-time causality protocol powering an inference engine that auto-names UI elements for one-click approval; new apps onboard with two HTML attributes, zero code changes." }]),
       bullet([{ text: "Built a release-audit service in Go on ClickHouse (append-only deploy ledger + before/after behavior diffs), backtested over 1,648 deploys / 90 days; its first live run flagged a same-day API regression (53% error rate) with session-level evidence." }]),
       bullet([{ text: "Automated develop→Kubernetes delivery with GitHub Actions + GitOps (CI-authored image bumps, programmatic approval, merge queue), cutting deploy lead time from ~1 day of manual coordination to under 15 minutes with zero human steps." }]),
-      bullet([{ text: "Root-caused a React render loop that was OOM-killing CI runners — took a 962-test suite from 60+ min to 35 s; published the SDK to a private npm registry with semantic versioning and property-based tests." }]),
       bullet([{ text: "Worked in an AI-augmented workflow (LLM pair-programming, multi-agent orchestration), landing 25+ production pull requests across SDK, backend, and dashboard in the final two weeks." }]),
 
       roleLine("Cybersecurity Intern", "CyberRange (Remote)", "Jul 2024 – Nov 2024"),
@@ -139,7 +138,7 @@ const doc = new Document({
       sectionHeading("Projects"),
       bullet([
         { text: "vetlock", bold: true },
-        { text: " (TypeScript / Node, github.com/OJ-Uday/vetlock, Apache-2.0) — open-source npm supply-chain scanner: behavioral diff between two lockfiles, static analysis over extracted tarballs, 17 detectors (install-script injection, env-token harvest, exfil endpoints, obfuscation jumps, typosquat detection, GHSA correlation). Ships CLI, GitHub Action (SARIF), and a live in-browser demo backed by Cloudflare Workers + GitHub Actions. 375 tests; caught 12 of 13 real historical npm attacks; closed 31 of 35 exploits from a six-agent adversarial red-team review. NEVER-EXECUTE canary invariant." },
+        { text: " (TypeScript / Node, github.com/OJ-Uday/vetlock, Apache-2.0) — open-source npm supply-chain scanner: behavioral diff between two lockfiles, static analysis over extracted tarballs, 17 detectors (install-script injection, env-token harvest, exfil endpoints, obfuscation jumps, typosquat detection, GHSA correlation). Ships CLI, GitHub Action (SARIF), and a live in-browser demo backed by Cloudflare Workers + GitHub Actions. 375 tests; caught 12 of 13 real historical npm attacks. NEVER-EXECUTE canary invariant." },
       ]),
       bullet([
         { text: "telemetry-sdk-patterns", bold: true },
