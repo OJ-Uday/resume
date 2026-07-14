@@ -147,6 +147,12 @@ jobs:
       - name: (node-docx) build
         if: matrix.type == 'node-docx'
         working-directory: ${{ matrix.dir }}
+        env:
+          # Unset any inherited npm auth so `npm ci` uses the local
+          # .npmrc's anonymous public-registry config. Prevents E401
+          # when a token happens to be present in the environment.
+          NPM_TOKEN: ""
+          NODE_AUTH_TOKEN: ""
         run: |
           npm ci
           node "${{ matrix.entry }}"
