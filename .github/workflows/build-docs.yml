@@ -1,0 +1,255 @@
+name: docsforge build
+
+# ---------------------------------------------------------------------
+# docsforge — reusable GitHub Actions workflow that auto-builds every
+# document in a repo whose folder contains a .docmeta.yml file, and
+# publishes the outputs as a rolling GitHub Release.
+#
+# Consumer usage (one file in your repo):
+#
+#   # .github/workflows/build.yml
+#   name: Build docs
+#   on:
+#     push: { branches: [main] }
+#     workflow_dispatch:
+#   permissions:
+#     contents: write
+#   jobs:
+#     build:
+#       uses: OJ-Uday/docsforge/.github/workflows/build-docs.yml@main
+#
+# Per-doc config (one file per document):
+#
+#   # thesis/.docmeta.yml
+#   type: latex              # latex | node-docx | markdown-pandoc
+#   entry: main.tex          # relative to the .docmeta.yml
+#   output_name: My_Thesis   # sets Uday_Ojha_Thesis.pdf on the release
+#   needs_bibtex: true       # LaTeX only; runs bibtex mid-compile
+#
+# See the /docs/DOCMETA.md and /docs/BUILDERS.md pages of the docsforge
+# repo for the full schema and the semantics of each builder type.
+# ---------------------------------------------------------------------
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Tag name of the rolling GitHub Release."
+        type: string
+        default: "latest"
+      release_name:
+        description: "Human-readable name of the release page."
+        type: string
+        default: "Latest build"
+      commit_previews:
+        description: "Auto-commit preview PNGs of each doc back to the repo."
+        type: boolean
+        default: true
+      artifact_retention_days:
+        description: "How long workflow artifacts persist."
+        type: number
+        default: 30
+
+concurrency:
+  group: docsforge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==================================================================
+  # discover: scan the repo for .docmeta.yml files and emit a build
+  # matrix.
+  # ==================================================================
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.scan.outputs.matrix }}
+      count:  ${{ steps.scan.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Discover .docmeta.yml files
+        id: scan
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq yq
+          entries="[]"
+          count=0
+          # find every .docmeta.yml, skipping node_modules / hidden dirs
+          while IFS= read -r meta; do
+            dir="$(dirname "$meta")"
+            type=$(yq -r '.type // ""' "$meta")
+            entry=$(yq -r '.entry // ""' "$meta")
+            output_name=$(yq -r '.output_name // ""' "$meta")
+            needs_bibtex=$(yq -r '.needs_bibtex // false' "$meta")
+
+            if [ -z "$type" ] || [ -z "$entry" ]; then
+              echo "::warning file=$meta::missing type or entry — skipping"
+              continue
+            fi
+
+            # default output_name to the parent folder name if unset
+            if [ -z "$output_name" ]; then
+              output_name="$(basename "$dir")"
+            fi
+
+            entries=$(echo "$entries" | jq --arg dir "$dir" --arg t "$type" --arg e "$entry" --arg n "$output_name" --argjson bib "$needs_bibtex" \
+              '. + [{dir:$dir, type:$t, entry:$e, output_name:$n, needs_bibtex:$bib}]')
+            count=$((count + 1))
+          done < <(find . -name '.docmeta.yml' -not -path './node_modules/*' -not -path './.git/*')
+
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(echo "$entries" | jq -c '{include: .}')" >> "$GITHUB_OUTPUT"
+          echo "Discovered $count doc(s):"
+          echo "$entries" | jq -r '.[] | "  - \(.output_name)  (\(.type) @ \(.dir))"'
+
+  # ==================================================================
+  # build: one job per discovered doc. Runs in parallel.
+  # ==================================================================
+  build:
+    needs: discover
+    if: ${{ needs.discover.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # LaTeX branch — TeX Live via xu-cheng/latex-action, latexmk driver.
+      # ------------------------------------------------------------------
+      - name: (latex) compile ${{ matrix.entry }}
+        if: matrix.type == 'latex'
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: ${{ matrix.entry }}
+          working_directory: ${{ matrix.dir }}
+          args: "-pdf -f -interaction=nonstopmode -halt-on-error"
+
+      # ------------------------------------------------------------------
+      # node-docx branch — assumes package.json in matrix.dir with a
+      # docx builder script (default: `node <entry>`) that produces a
+      # .docx file. Optional docx_to_pdf.py converts to PDF.
+      # ------------------------------------------------------------------
+      - name: (node-docx) setup Node.js
+        if: matrix.type == 'node-docx'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+
+      - name: (node-docx) setup Python
+        if: matrix.type == 'node-docx'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: (node-docx) build
+        if: matrix.type == 'node-docx'
+        working-directory: ${{ matrix.dir }}
+        run: |
+          npm ci
+          node "${{ matrix.entry }}"
+          # If a docx_to_pdf.py exists next to the entry, run it.
+          if [ -f "docx_to_pdf.py" ]; then
+            python3 -m pip install --user --quiet python-docx reportlab
+            python3 docx_to_pdf.py
+          fi
+
+      # ------------------------------------------------------------------
+      # markdown-pandoc branch — one .md through pandoc + xelatex.
+      # ------------------------------------------------------------------
+      - name: (markdown-pandoc) install pandoc + tex
+        if: matrix.type == 'markdown-pandoc'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pandoc texlive-xetex texlive-fonts-recommended texlive-latex-extra fonts-lmodern
+
+      - name: (markdown-pandoc) build
+        if: matrix.type == 'markdown-pandoc'
+        working-directory: ${{ matrix.dir }}
+        run: |
+          out="${{ matrix.output_name }}.pdf"
+          pandoc "${{ matrix.entry }}" -o "$out" \
+            --pdf-engine=xelatex \
+            -V geometry:margin=1in \
+            -V mainfont="Latin Modern Roman"
+
+      # ------------------------------------------------------------------
+      # Collect the outputs from matrix.dir with predictable names.
+      # ------------------------------------------------------------------
+      - name: Stage outputs
+        run: |
+          mkdir -p /tmp/docsforge-artifacts
+          dir="${{ matrix.dir }}"
+          name="${{ matrix.output_name }}"
+
+          shopt -s nullglob
+          for src in "$dir"/*.pdf; do
+            cp "$src" "/tmp/docsforge-artifacts/${name}.pdf"
+            break
+          done
+          for src in "$dir"/*.docx; do
+            cp "$src" "/tmp/docsforge-artifacts/${name}.docx"
+            break
+          done
+          ls -la /tmp/docsforge-artifacts
+
+      - name: Upload per-doc artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doc-${{ matrix.output_name }}
+          path: /tmp/docsforge-artifacts/*
+          retention-days: ${{ inputs.artifact_retention_days }}
+
+  # ==================================================================
+  # publish: collect every doc-* artifact, publish to rolling release.
+  # ==================================================================
+  publish:
+    needs: [discover, build]
+    if: ${{ needs.discover.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all per-doc artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: staged
+          pattern: doc-*
+          merge-multiple: true
+
+      - name: List staged outputs
+        run: ls -la staged
+
+      - name: Job summary
+        run: |
+          {
+            echo "## docsforge build summary"
+            echo ""
+            echo "| Output | Size |"
+            echo "| --- | --- |"
+            for f in staged/*; do
+              name=$(basename "$f")
+              size=$(du -k "$f" | awk '{print $1 " KB"}')
+              echo "| $name | $size |"
+            done
+            echo ""
+            echo "Download from **[Releases → ${{ inputs.release_name }}](../../releases/tag/${{ inputs.release_tag }})**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: ${{ inputs.release_name }}
+          body: |
+            Auto-built by [docsforge](https://github.com/OJ-Uday/docsforge).
+
+            Commit: ${{ github.sha }}
+          files: staged/*
+          make_latest: "true"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
