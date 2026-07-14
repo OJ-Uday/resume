@@ -31,6 +31,12 @@ docsforge is the smallest useful pipeline that gives you that:
   or Markdown via [`pandoc`](https://pandoc.org). Mix them in one repo.
 - **Zero YAML boilerplate per doc.** Discovery scans for `.docmeta.yml`
   and builds every doc it finds, in parallel.
+- **Phone-editable by design.** Point the `node-docx` builder at a
+  `content.md` (Markdown) alongside a small `generate.cjs` layout
+  engine, and you can edit your resume or one-pager end-to-end from
+  the GitHub mobile app. No IDE, no local install. See
+  [`examples/resume-node-docx/`](examples/resume-node-docx/) for a
+  working pattern.
 - **Rerun anytime** — every workflow has a manual `workflow_dispatch`
   trigger.
 
